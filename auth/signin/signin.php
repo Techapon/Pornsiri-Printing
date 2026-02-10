@@ -18,18 +18,22 @@
 
             // // ตรวจสอบว่าพบผู้ใช้และรหัสผ่านถูกต้องหรือไม่
             if ( $user['password'] == $password) {
-                // Login สำเร็จ
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['username'] = $user['username'];
+
 
                 switch ($user['role']) {
                     // General user
                     case 0:
+                        // Login สำเร็จ
+                        $_SESSION['user_id'] = $user['id'];
+                        $_SESSION['username'] = $user['username'];
                         header("Location: ../../user/user_orders.php");
                         exit();
                         break;
                     // Admin
                     case 1:
+                        // Login สำเร็จ
+                        $_SESSION['admin_id'] = $user['id'];
+                        $_SESSION['admin_name'] = $user['username'];
                         header("Location: ../../admin/orders_mng.php");
                         exit();
                         break;

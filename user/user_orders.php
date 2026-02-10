@@ -339,7 +339,30 @@
 
                     $sordOrders = [];
 
-                    $priority = ['pending', 'completed', 'cancelled'];
+                    // Const data
+
+                    $priority = ['pending', 'waiting', 'completed', 'cancelled'];
+
+                    $status_dict = [
+                        "pending" => [
+                            "text" => "รอการตอบกลับ",
+                            "color" => "bg-gray-200",
+                        ],
+                        "waiting" => [
+                            "text" => "รอคิวปริ้น",
+                            "color" => "bg-yellow-300"
+                        ],
+                        "completed" => [
+                            "text" => "ปริ้นสำเร็จ",
+                            "color" => "bg-green-300"
+                        ],
+                        "rejected" => [
+                            "text" => "ถูกปฎิเสธ",
+                            "color" => "bg-red-300"
+                        ]
+                    ];
+
+                    //------------------------
 
                     // sord orders
                     foreach ($priority as $status) {
@@ -360,22 +383,15 @@
                         $paper_type = $order['paper_type'];
                         $size = $order['size'];
                         $quantity = $order['quantity'];
+                        $respone = $order['respone'];
 
                         
                         // element ux
                         $status_color;
                         $status_text;
 
-                        if ($status == "pending") {
-                            $status_color = "yellow";
-                            $status_text = "รอคิวปริ้น";
-                        } elseif ($status == "completed") {
-                            $status_color = "green";
-                            $status_text = "ปริ้นสำเร็จ";
-                        } elseif ($status == "cancelled") {
-                            $status_color = "red";
-                            $status_text = "คำสั่งถูกปฎิเสธ";
-                        }
+                        $status_color = $status_dict[$status]["color"];
+                        $status_text = $status_dict[$status]["text"];
 
                         $opacity = "100";
                         if ($status != "pending") $opacity = "75";
@@ -397,7 +413,7 @@
                                     </div>
                                 </div>
                                 <div class="flex items-center space-x-4">
-                                    <span class="bg-<?=$status_color?>-300 border border-black px-2 py-0.5 text-[10px] font-bold"><?=$status_text?></span>
+                                    <span class="<?=$status_color?> border border-black px-2 py-0.5 text-[10px] font-bold"><?=$status_text?></span>
                                     <i data-lucide="chevron-down" class="chevron-icon transition-transform"></i>
                                 </div>
                             </div>
@@ -407,6 +423,13 @@
                                 <!-- View State -->
                                 <div id="view-state-<?=$order_id?>" class="p-6 grid md:grid-cols-2 gap-6">
                                     <div class=" space-y-3">
+                                        <?php if ($respone != "") { ?>
+                                            <div class="flex items-center space-x-2 font-mono mb-4">
+                                                <i data-lucide="circle-alert" class="text-sm text-red-500"></i>
+                                                <p class="font-bold">ข้อความจากทางร้าน : <span class = "text-sm text-red-500"><?=$respone?></span></p>
+                                            </div>
+                                        <?php } ?>
+                
                                         <p class="text-sm font-mono"><span class="font-bold">ลิ้งก์ไฟล์:</span> <span class="text-blue-500 underline"><?=$link?></span></p>
                                         <p class="text-sm font-mono"><span class="font-bold">ประเภทกระดาษ:</span> <span><?=$paper_type?></span></p>
                                         <p class="text-sm font-mono"><span class="font-bold">ขนาด:</span> <span><?=$size?></span></p>

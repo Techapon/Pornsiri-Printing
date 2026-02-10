@@ -1,3 +1,130 @@
+<?php
+    session_start();
+    include "../server.php";
+
+    if(!isset($_SESSION['admin_id'])){
+        header("Location: index.php");
+        exit();
+    }
+
+    $stmt = $conn->prepare("SELECT * FROM orders ORDER BY order_id DESC");
+    $stmt->execute();
+    $orders = $stmt->fetchAll();
+
+    $sordOrders = [];
+
+    // Const data
+
+    $priority = ['pending', 'waiting', 'completed', 'cancelled'];
+
+    $action_dict = [
+        "accept" => [
+            "mean" => "accept",
+            "text" => "รับงาน",
+            "color" => "bg-yellow-300",
+            "text_color" => "text-black"
+        ],
+        "reject" => [
+            "mean" => "reject",
+            "text" => "ปฏิเสธ",
+            "color" => "bg-red-500",
+            "text_color" => "text-white"
+        ],
+        "completed" => [
+            "mean" => "completed",
+            "text" => "ปริ้นสำเร็จ",
+            "color" => "bg-green-400",
+            "text_color" => "text-black"
+        ],
+        "cancelled" => [
+            "mean" => "cancelled",
+            "text" => "ยกเลิก",
+            "color" => "bg-white",
+            "text_color" => "text-red-500"
+        ],
+        "delete" => [
+            "mean" => "delete",
+            "text" => "ลบ",
+            "color" => "bg-red-500",
+            "text_color" => "text-black",
+            "icon" => "trash-2"
+        ]
+    ];
+
+    $status_dict = [
+        "pending" => [
+            "mean" => "pending",
+            "text" => "รอการตอบกลับ",
+            "color" => "bg-gray-200",
+            "action" => [
+                "accept" => $action_dict["accept"],
+                "reject" => $action_dict["reject"]
+            ]
+        ],
+        "waiting" => [
+            "mean" => "waiting",
+            "text" => "รอคิวปริ้น",
+            "color" => "bg-yellow-300",
+            "action" => [
+                "completed" => $action_dict["completed"],
+                "cancelled" => $action_dict["cancelled"]
+            ]
+        ],
+        "completed" => [
+            "mean" => "completed",
+            "text" => "ปริ้นสำเร็จ",
+            "color" => "bg-green-300",
+            "action" => [
+                "delete" => $action_dict["delete"]
+            ]
+        ],
+        "rejected" => [
+            "mean" => "rejected",
+            "text" => "ปฎิเสธ",
+            "color" => "bg-red-300",
+            "action" => [
+                "delete" => $action_dict["delete"]
+            ]
+        ]
+    ];
+
+    // Count 
+    $total = count($orders);
+    
+    $pending = 0;
+    $waiting = 0;
+    $completed = 0;
+    $rejected = 0;
+        
+    $count_status = [
+        "pending" => $pending,
+        "waiting" => $waiting,
+        "completed" => $completed,
+        "rejected" => $rejected
+    ];
+
+    // sord orders
+    foreach ($priority as $status) {
+        foreach ($orders as $key => $order) {
+            if ($order["status"] == $status) {
+                $count_status[$status]++;
+                
+                $stmt = $conn->prepare("SELECT username FROM users WHERE id = :order_user_id");
+                $stmt->bindParam(":order_user_id", $order["user_id"]);
+                $stmt->execute();
+                $user = $stmt->fetchAll(PDO::FETCH_ASSOC);
+              
+                $order["username"] = $user[0]["username"];
+  
+                $sordOrders[] = $order;
+
+                unset($orders[$key]);
+                
+            }
+        }
+    }
+?>
+
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -53,7 +180,7 @@
             50% { transform: scale(1.02); background-color: #4ade80; }
             100% { transform: scale(1); }
         }
-        .row-updated { animation: success-pop 0.4s ease; }
+        /* .row-updated { animation: success-pop 0.4s ease; } */
         
         .order-row.hidden, .order-row.hidden + tr { display: none !important; }
 
@@ -104,9 +231,6 @@
             <h1 class="text-2xl font-black font-mono tracking-tighter italic">PORNSIRI<br><span class="bg-black text-white px-2">ADMIN</span></h1>
         </div>
         <nav class="space-y-2">
-            <a href="#" class="flex items-center p-3 border-2 border-black bg-black text-white font-mono font-bold">
-                <i data-lucide="layout-dashboard" class="w-4 h-4 mr-2"></i> ORDERS
-            </a>
             <a href="../logout.php" class="flex items-center p-3 border-2 border-transparent hover:border-black font-mono font-bold transition-all mt-20 text-red-500">
                 <i data-lucide="log-out" class="w-4 h-4 mr-2"></i> LOGOUT
             </a>
@@ -117,8 +241,8 @@
         <header class="flex justify-between items-center mb-8">
             <h2 class="text-3xl font-black uppercase font-mono italic">Order Management</h2>
             <div class="flex items-center space-x-2">
-                <div class="w-10 h-10 bg-yellow-400 border-2 border-black rounded-full flex items-center justify-center font-bold">A</div>
-                <span class="font-mono text-sm hidden sm:block uppercase">Administrator</span>
+                <div class="w-10 h-10 bg-yellow-400 border-2 border-black rounded-full flex items-center justify-center font-bold"><?=strtoupper($_SESSION['admin_name'][0])?></div>
+                <span class="font-mono text-sm hidden sm:block uppercase"><?=ucfirst($_SESSION['admin_name'])?></span>
             </div>
         </header>
 
@@ -126,23 +250,23 @@
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
             <div class="stats-card bg-white border-2 border-black p-4 admin-shadow">
                 <p class="text-[10px] font-mono font-bold text-gray-400 uppercase">ทั้งหมด</p>
-                <p class="text-2xl font-black counter" data-target="42">0</p>
+                <p class="text-2xl font-black counter" data-target="<?=$total?>">0</p>
             </div>
             <div class="stats-card bg-gray-200 border-2 border-black p-4 admin-shadow">
                 <p class="text-[10px] font-mono font-bold uppercase text-gray-600">ทั่วไป</p>
-                <p class="text-2xl font-black counter" data-target="5">0</p>
+                <p class="text-2xl font-black counter" data-target="<?=$count_status["pending"]?>">0</p>
             </div>
             <div class="stats-card bg-yellow-300 border-2 border-black p-4 admin-shadow">
                 <p class="text-[10px] font-mono font-bold uppercase text-yellow-800">รอคิว</p>
-                <p class="text-2xl font-black counter" data-target="12">0</p>
+                <p class="text-2xl font-black counter" data-target="<?=$count_status["waiting"]?>">0</p>
             </div>
             <div class="stats-card bg-green-400 border-2 border-black p-4 admin-shadow">
                 <p class="text-[10px] font-mono font-bold uppercase text-green-800">สำเร็จ</p>
-                <p class="text-2xl font-black counter" data-target="20">0</p>
+                <p class="text-2xl font-black counter" data-target="<?=$count_status["completed"]?>">0</p>
             </div>
             <div class="stats-card bg-red-400 border-2 border-black p-4 admin-shadow">
                 <p class="text-[10px] font-mono font-bold uppercase text-red-800">ปฏิเสธ</p>
-                <p class="text-2xl font-black counter" data-target="5">0</p>
+                <p class="text-2xl font-black counter" data-target="<?=$count_status["rejected"]?>">0</p>
             </div>
         </div>
 
@@ -169,111 +293,99 @@
                         </tr>
                     </thead>
                     <tbody class="font-mono" id="orders-body">
+                        <?php
+                            foreach ($sordOrders as $order) {
+                                $order_id = $order["order_id"];
+                                $order_user_name = $order["username"];
+                                $order_date = $order["date"];
+                                $order_status = $order["status"];
+
+                                $order_link = $order["link"];
+                                $order_paper_type = $order["paper_type"];
+                                $order_size = $order["size"];
+                                $order_qty = $order["quantity"];
+                                $order_message = $order["message"];
+
+                                $status_color = $status_dict[$order_status]["color"];
+                                $status_text = $status_dict[$order_status]["text"];
+                                
+                                ?>
+                              
+                                <!-- Main-->
+                                <tr class="order-row border-b-2 border-black" data-status="general" id="row-2001" onclick="toggleRow(this)">
+                                    <td class="p-4 border-r-2 border-black font-bold">#<?=$order_id?></td>
+                                    <td class="p-4 border-r-2 border-black">
+                                        <p class="text-xs font-bold"><?=$order_user_name?></p>
+                                        <p class="text-[10px] text-gray-400"><?=$order_date?></p>
+                                    </td>
+                                    <td class="p-4 border-r-2 border-black ">
+                                        <span class="status-badge bg-general <?=$status_color?>"><?=$status_text?></span>
+                                    </td>
+                                    <td class="p-4 border-r-2 border-black">
+                                        <div class="flex justify-center space-x-2" id="actions-2001">
+                                            <!-- <button onclick="event.stopPropagation(); updateStatus('2001', 'pending')" class="btn-action bg-yellow-300">รับงาน</button>
+                                            <button onclick="event.stopPropagation(); openRejectModal('2001')" class="btn-action bg-red-400">ปฏิเสธ</button> -->
+                                            <?php foreach ($status_dict as $action_btn) {
+                                                if ($order_status == $action_btn["mean"]) {
+                                                    foreach ($action_btn["action"] as $action) {
+                                                        ?>
+
+                                                        <?php if ($action["mean"] != "delete") { ?>
+                                                            <button  class="btn-action <?=$action["color"]?> <?=$action["text_color"]?>">
+                                                                <?=$action["text"]?>
+                                                            </button>
+                                                        <?php } else { ?>
+                                                            <button  class="flex items-center btn-action <?=$action["color"]?> <?=$action["text_color"]?>">
+                                                                <i data-lucide="<?=$action["icon"]?>" class="w-3 h-3 mr-1"></i>
+                                                                <?=$action["text"]?>
+                                                            </button>
+                                                        <?php } ?>
+                                                    
+                                                    <?php
+                                                    }
+                                                }
+                                            } ?>
+                                        </div>
+                                    </td>
+                                    <td class="p-4 text-center">
+                                        <i data-lucide="chevron-down" class="chevron-icon w-4 h-4"></i>
+                                    </td>
+                                </tr>
+
+                                <!-- Detail -->
+                                <tr class="details-row" data-status="general">
+                                    <td colspan="5" class="p-0 border-r-2 border-black">
+                                        <div class="details-container">
+                                            <div class="p-6 bg-white grid md:grid-cols-2 gap-8 border-t-2 border-black">
+                                                <div class="space-y-4">
+                                                    <div>
+                                                        <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">ลิ้งก์ไฟล์งาน</p>
+                                                        <a href="#" class="inline-flex items-center text-blue-600 underline text-sm font-bold break-all">
+                                                            <i data-lucide="external-link" class="w-3 h-3 mr-1"></i><?=$order_link?>
+                                                        </a>
+                                                    </div>
+                                                    <div>
+                                                        <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">ข้อมูลการพิมพ์ (SPECS)</p>
+                                                        <div class="grid grid-cols-2 gap-2 text-xs">
+                                                            <p><span class="text-gray-500">กระดาษ:</span> <?=$order_paper_type?></p>
+                                                            <p><span class="text-gray-500">ขนาด:</span> <?=$order_size?></p>
+                                                            <p><span class="text-gray-500">จำนวน:</span> <span class="font-bold"><?=$order_qty?></span> ชุด</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="space-y-2">
+                                                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">ข้อความจากลูกค้า</p>
+                                                    <div class="text-sm italic border-l-4 border-black pl-3 py-2 bg-gray-50 shadow-inner">
+                                                        "<?=$order_message?>"
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                
+                        <?php } ?>
                         
-                        <!-- Row 1 -->
-                        <tr class="order-row border-b-2 border-black" data-status="general" id="row-2001" onclick="toggleRow(this)">
-                            <td class="p-4 border-r-2 border-black font-bold">#2001</td>
-                            <td class="p-4 border-r-2 border-black">
-                                <p class="text-xs font-bold">นายสมชาย รักดี</p>
-                                <p class="text-[10px] text-gray-400">07/02/2026 14:30</p>
-                            </td>
-                            <td class="p-4 border-r-2 border-black">
-                                <span class="status-badge bg-general">ออร์เดอร์ทั่วไป</span>
-                            </td>
-                            <td class="p-4 border-r-2 border-black">
-                                <div class="flex justify-center space-x-2" id="actions-2001">
-                                    <button onclick="event.stopPropagation(); updateStatus('2001', 'pending')" class="btn-action bg-yellow-300">รับงาน</button>
-                                    <button onclick="event.stopPropagation(); openRejectModal('2001')" class="btn-action bg-red-400">ปฏิเสธ</button>
-                                </div>
-                            </td>
-                            <td class="p-4 text-center">
-                                <i data-lucide="chevron-down" class="chevron-icon w-4 h-4"></i>
-                            </td>
-                        </tr>
-                        <!-- Row 1 Details -->
-                        <tr class="details-row" data-status="general">
-                            <td colspan="5" class="p-0 border-r-2 border-black">
-                                <div class="details-container">
-                                    <div class="p-6 bg-white grid md:grid-cols-2 gap-8 border-t-2 border-black">
-                                        <div class="space-y-4">
-                                            <div>
-                                                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">ลิ้งก์ไฟล์งาน</p>
-                                                <a href="#" class="inline-flex items-center text-blue-600 underline text-sm font-bold break-all">
-                                                    <i data-lucide="external-link" class="w-3 h-3 mr-1"></i> https://drive.google.com/file/d/2001_sample_file
-                                                </a>
-                                            </div>
-                                            <div>
-                                                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">ข้อมูลการพิมพ์ (SPECS)</p>
-                                                <div class="grid grid-cols-2 gap-2 text-xs">
-                                                    <p><span class="text-gray-500">กระดาษ:</span> กระดาษธรรมดา (80gsm)</p>
-                                                    <p><span class="text-gray-500">ขนาด:</span> A4</p>
-                                                    <p><span class="text-gray-500">จำนวน:</span> <span class="font-bold">50</span> ชุด</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="space-y-2">
-                                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">ข้อความจากลูกค้า</p>
-                                            <div class="text-sm italic border-l-4 border-black pl-3 py-2 bg-gray-50 shadow-inner">
-                                                "ฝากปริ้นสีสดๆ นะครับ แม็กมุมซ้ายให้ด้วย"
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </td>
-                        </tr>
-
-                        <!-- Row 2 -->
-                        <tr class="order-row border-b-2 border-black" data-status="pending" id="row-2002" onclick="toggleRow(this)">
-                            <td class="p-4 border-r-2 border-black font-bold">#2002</td>
-                            <td class="p-4 border-r-2 border-black">
-                                <p class="text-xs font-bold">คุณสมพร งานไว</p>
-                                <p class="text-[10px] text-gray-400">07/02/2026 15:10</p>
-                            </td>
-                            <td class="p-4 border-r-2 border-black">
-                                <span class="status-badge bg-pending">รอคิวปริ้น</span>
-                            </td>
-                            <td class="p-4 border-r-2 border-black">
-                                <div class="flex justify-center space-x-2" id="actions-2002">
-                                    <button onclick="event.stopPropagation(); updateStatus('2002', 'completed')" class="btn-action bg-green-400">สำเร็จ</button>
-                                    <button onclick="event.stopPropagation(); openDeleteModal('2002')" class="btn-action bg-white text-red-600">ลบทิ้ง</button>
-                                </div>
-                            </td>
-                            <td class="p-4 text-center">
-                                <i data-lucide="chevron-down" class="chevron-icon w-4 h-4"></i>
-                            </td>
-                        </tr>
-                        <!-- Row 2 Details -->
-                        <tr class="details-row" data-status="pending">
-                            <td colspan="5" class="p-0 border-r-2 border-black">
-                                <div class="details-container">
-                                    <div class="p-6 bg-white grid md:grid-cols-2 gap-8 border-t-2 border-black">
-                                        <div class="space-y-4">
-                                            <div>
-                                                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">ลิ้งก์ไฟล์งาน</p>
-                                                <a href="#" class="inline-flex items-center text-blue-600 underline text-sm font-bold break-all">
-                                                    <i data-lucide="external-link" class="w-3 h-3 mr-1"></i> https://dropbox.com/s/2002_final_v2
-                                                </a>
-                                            </div>
-                                            <div>
-                                                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">ข้อมูลการพิมพ์ (SPECS)</p>
-                                                <div class="grid grid-cols-2 gap-2 text-xs">
-                                                    <p><span class="text-gray-500">กระดาษ:</span> กระดาษอาร์ตมัน (120gsm)</p>
-                                                    <p><span class="text-gray-500">ขนาด:</span> A3</p>
-                                                    <p><span class="text-gray-500">จำนวน:</span> <span class="font-bold">10</span> ชุด</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="space-y-2">
-                                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">ข้อความจากลูกค้า</p>
-                                            <div class="text-sm italic border-l-4 border-black pl-3 py-2 bg-gray-50 shadow-inner">
-                                                - ไม่มีข้อความเพิ่มเติม -
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </td>
-                        </tr>
-
                     </tbody>
                 </table>
             </div>
@@ -319,61 +431,63 @@
 
         // --- Filter Logic ---
         function filterOrders(status, btn) {
-            const buttons = document.querySelectorAll('#filter-container button');
-            buttons.forEach(b => b.classList.remove('filter-active'));
-            btn.classList.add('filter-active');
+            // const buttons = document.querySelectorAll('#filter-container button');
+            // buttons.forEach(b => b.classList.remove('filter-active'));
+            // btn.classList.add('filter-active');
 
-            const rows = document.querySelectorAll('.order-row');
-            const detailsRows = document.querySelectorAll('.details-row');
+            // const rows = document.querySelectorAll('.order-row');
+            // const detailsRows = document.querySelectorAll('.details-row');
 
-            rows.forEach((row, index) => {
-                const details = detailsRows[index];
-                if (status === 'all') {
-                    row.classList.remove('hidden');
-                    details.classList.remove('hidden');
-                } else {
-                    if (row.dataset.status === status) {
-                        row.classList.remove('hidden');
-                        details.classList.remove('hidden');
-                    } else {
-                        row.classList.add('hidden');
-                        details.classList.add('hidden');
-                        row.classList.remove('active');
-                    }
-                }
-            });
+            // rows.forEach((row, index) => {
+            //     const details = detailsRows[index];
+            //     if (status === 'all') {
+            //         row.classList.remove('hidden');
+            //         details.classList.remove('hidden');
+            //     } else {
+            //         if (row.dataset.status === status) {
+            //             row.classList.remove('hidden');
+            //             details.classList.remove('hidden');
+            //         } else {
+            //             row.classList.add('hidden');
+            //             details.classList.add('hidden');
+            //             row.classList.remove('active');
+            //         }
+            //     }
+            // });
+            console.log(status);
+            console.log(btn);
         }
 
         // --- Status Update ---
-        function updateStatus(id, newStatus) {
-            const row = document.getElementById('row-' + id);
-            const badge = row.querySelector('.status-badge');
-            const actions = document.getElementById('actions-' + id);
+        // function updateStatus(id, newStatus) {
+        //     const row = document.getElementById('row-' + id);
+        //     const badge = row.querySelector('.status-badge');
+        //     const actions = document.getElementById('actions-' + id);
             
-            row.classList.add('row-updated');
-            row.dataset.status = newStatus;
+        //     row.classList.add('row-updated');
+        //     row.dataset.status = newStatus;
             
-            const detailRow = row.nextElementSibling;
-            detailRow.dataset.status = newStatus;
+        //     const detailRow = row.nextElementSibling;
+        //     detailRow.dataset.status = newStatus;
 
-            setTimeout(() => {
-                if (newStatus === 'pending') {
-                    badge.innerText = 'รอคิวปริ้น';
-                    badge.className = 'status-badge bg-pending';
-                    actions.innerHTML = `
-                        <button onclick="event.stopPropagation(); updateStatus('${id}', 'completed')" class="btn-action bg-green-400">สำเร็จ</button>
-                        <button onclick="event.stopPropagation(); openDeleteModal('${id}')" class="btn-action bg-white text-red-600">ลบทิ้ง</button>
-                    `;
-                } else if (newStatus === 'completed') {
-                    badge.innerText = 'ปริ้นสำเร็จ';
-                    badge.className = 'status-badge bg-completed';
-                    actions.innerHTML = `
-                        <button onclick="event.stopPropagation(); openDeleteModal('${id}')" class="btn-action bg-white text-red-600 uppercase">ลบทิ้ง</button>
-                    `;
-                }
-                row.classList.remove('row-updated');
-            }, 400);
-        }
+        //     setTimeout(() => {
+        //         if (newStatus === 'pending') {
+        //             badge.innerText = 'รอคิวปริ้น';
+        //             badge.className = 'status-badge bg-pending';
+        //             actions.innerHTML = `
+        //                 <button onclick="event.stopPropagation(); updateStatus('${id}', 'completed')" class="btn-action bg-green-400">สำเร็จ</button>
+        //                 <button onclick="event.stopPropagation(); openDeleteModal('${id}')" class="btn-action bg-white text-red-600">ลบทิ้ง</button>
+        //             `;
+        //         } else if (newStatus === 'completed') {
+        //             badge.innerText = 'ปริ้นสำเร็จ';
+        //             badge.className = 'status-badge bg-completed';
+        //             actions.innerHTML = `
+        //                 <button onclick="event.stopPropagation(); openDeleteModal('${id}')" class="btn-action bg-white text-red-600 uppercase">ลบทิ้ง</button>
+        //             `;
+        //         }
+        //         row.classList.remove('row-updated');
+        //     }, 400);
+        // }
 
         // --- Modal Control ---
         function openRejectModal(id) {
@@ -391,37 +505,37 @@
             currentTargetId = null;
         }
 
-        function executeReject() {
-            const reason = document.getElementById('rejectReason').value;
-            if (!reason) return;
+        // function executeReject() {
+        //     const reason = document.getElementById('rejectReason').value;
+        //     if (!reason) return;
             
-            const row = document.getElementById('row-' + currentTargetId);
-            const badge = row.querySelector('.status-badge');
-            const actions = document.getElementById('actions-' + currentTargetId);
+        //     const row = document.getElementById('row-' + currentTargetId);
+        //     const badge = row.querySelector('.status-badge');
+        //     const actions = document.getElementById('actions-' + currentTargetId);
             
-            row.dataset.status = 'rejected';
-            badge.innerText = 'ปฏิเสธ';
-            badge.className = 'status-badge bg-rejected';
-            actions.innerHTML = `<button onclick="event.stopPropagation(); openDeleteModal('${currentTargetId}')" class="btn-action bg-white text-red-600 uppercase">ลบทิ้ง</button>`;
+        //     row.dataset.status = 'rejected';
+        //     badge.innerText = 'ปฏิเสธ';
+        //     badge.className = 'status-badge bg-rejected';
+        //     actions.innerHTML = `<button onclick="event.stopPropagation(); openDeleteModal('${currentTargetId}')" class="btn-action bg-white text-red-600 uppercase">ลบทิ้ง</button>`;
             
-            closeModal('rejectModal');
-        }
+        //     closeModal('rejectModal');
+        // }
 
-        function executeDelete() {
-            const row = document.getElementById('row-' + currentTargetId);
-            const detailRow = row.nextElementSibling;
+        // function executeDelete() {
+        //     const row = document.getElementById('row-' + currentTargetId);
+        //     const detailRow = row.nextElementSibling;
             
-            row.style.transform = 'translateX(20px)';
-            row.style.opacity = '0';
-            detailRow.style.opacity = '0';
+        //     row.style.transform = 'translateX(20px)';
+        //     row.style.opacity = '0';
+        //     detailRow.style.opacity = '0';
             
-            setTimeout(() => {
-                row.remove();
-                detailRow.remove();
-            }, 300);
+        //     setTimeout(() => {
+        //         row.remove();
+        //         detailRow.remove();
+        //     }, 300);
             
-            closeModal('deleteModal');
-        }
+        //     closeModal('deleteModal');
+        // }
 
         window.onload = () => {
             initCounters();
