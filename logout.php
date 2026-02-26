@@ -6,9 +6,9 @@
     session_destroy();
 
     // ลบ cookie session (ถ้ามี)
-    if (isset($_COOKIE[session_name()])) {
-        setcookie(session_name(), '', time() - 3600, '/');
-    }
+    // if (isset($_COOKIE[session_name()])) {
+    //     setcookie(session_name(), '', time() - 3600, '/');
+    // }
 
     // Redirect กลับไปหน้า login
     header("Location: auth/signin/signin.php");

@@ -25,7 +25,7 @@
         // exit();
 
 
-        $stmt = $conn->prepare("INSERT INTO orders (user_id, status,link, message, paper_type, size,quantity) VALUES (:user_id, 'pending', :link, :message, :paper_type, :size, :quantity)");
+        $stmt = $conn->prepare("INSERT INTO orders (user_id, status,link, message, paper_type, size,quantity,queue) VALUES (:user_id, 'pending', :link, :message, :paper_type, :size, :quantity,0)");
         $stmt->bindParam(':user_id', $user_id);
         $stmt->bindParam(':link', $link);
         $stmt->bindParam(':message', $message);
@@ -233,6 +233,12 @@
             </h1>
             <div class="flex items-center space-x-4">
                 <span class="text-xs font-mono hidden md:block">USER: <?php echo ucfirst($_SESSION['username']) ?></span>
+                <a href="user_manual.php" title="คู่มือการใช้งาน">
+                    <button class="bg-white text-black border-2 border-black p-1 hover:bg-black hover:text-white transition-colors flex items-center space-x-1 px-2">
+                        <i data-lucide="book-open" class="w-4 h-4"></i>
+                        <span class="text-xs font-mono hidden sm:inline">คู่มือ</span>
+                    </button>
+                </a>
                 <a href="../logout.php">
                     <button class="bg-red-500 text-white border-2 border-black p-1 hover:bg-black transition-colors">
                         <i data-lucide="log-out" class="w-5 h-5"></i>
@@ -341,7 +347,7 @@
 
                     // Const data
 
-                    $priority = ['pending', 'waiting', 'completed', 'cancelled'];
+                    $priority = ['pending', 'waiting', 'completed', 'rejected'];
 
                     $status_dict = [
                         "pending" => [
@@ -394,7 +400,7 @@
                         $status_text = $status_dict[$status]["text"];
 
                         $opacity = "100";
-                        if ($status != "pending") $opacity = "75";
+                        if (($status != "pending") && ($status != "waiting")) $opacity = "75";
 
                         ?>
                         
@@ -423,10 +429,10 @@
                                 <!-- View State -->
                                 <div id="view-state-<?=$order_id?>" class="p-6 grid md:grid-cols-2 gap-6">
                                     <div class=" space-y-3">
-                                        <?php if ($respone != "") { ?>
+                                        <?php if ($status == "rejected") { ?>
                                             <div class="flex items-center space-x-2 font-mono mb-4">
                                                 <i data-lucide="circle-alert" class="text-sm text-red-500"></i>
-                                                <p class="font-bold">ข้อความจากทางร้าน : <span class = "text-sm text-red-500"><?=$respone?></span></p>
+                                                <p class="font-bold">ข้อความจากทางร้าน : <span class = "text-sm text-red-500"><?php if ($respone != "") { echo $respone; } else { echo "ทางร้านไม่บอก 🤫"; } ?></span></p>
                                             </div>
                                         <?php } ?>
                 

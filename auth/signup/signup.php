@@ -1,3 +1,111 @@
+
+<?php
+
+    session_start();
+    include "../../server.php";
+
+    $messages = [
+        "error_name" => "ชื่อสั้นไป ใจเย็นๆ พิมพ์เพิ่มหน่อย ขอ4ตัวอักษร",
+        "error_exit_name" => "ชื่อนี้มีคนใช้แล้ว อย่าก็อปๆ",
+        "error_password" => "ตั้งยากๆ หน่อย เดี๋ยวโดนแฮกแล้วร้องไห้ ขอ 6 ตัวอักษร",
+        "error_mismatch" => "พิมพ์ไม่เหมือนกัน สตินิดนึงครับพี่",
+        "error_condition" => "กดยอมรับเงื่อนไขก่อนสิครับพี่!",
+    ];
+
+    if (isset($_POST["signup"])) {
+        $username = trim($_POST["username"]);
+        $password = trim($_POST["password"]);
+        $confirmPassword = trim($_POST["confirmPassword"]);
+        $condition = $_POST["condition"];
+
+        // remember session structure
+        $remem_session = [
+            "username" => $username,
+            "password" => $password,
+            "confirmPassword" => $confirmPassword,
+        ];
+
+        $_SESSION["remem_data"] = $remem_session;
+
+        // error session structure
+        $error = [
+            "target" => "",
+            "message" => ""
+        ];
+
+        // username validation
+        if (strlen($username) < 4) {
+            $error["target"] = "username";
+            $error["message"] = $messages["error_name"];
+            $_SESSION["error"] = $error;
+
+            header("Location: signup.php");
+            exit();
+        }
+
+        $stmt = $conn->prepare("SELECT username FROM users WHERE username = :username");
+        $stmt->bindParam(":username", $username);
+        $stmt->execute();
+        $username_check = $stmt->fetch();
+
+        if ($username_check != null) {
+            $error["target"] = "username";
+            $error["message"] = $messages["error_exit_name"];
+
+            $_SESSION["error"] = $error;
+            header("Location: signup.php");
+            exit();
+        }
+
+        // password & comfirm password validation
+        if ((strlen($password) < 6) || (strlen($confirmPassword) < 6)) {
+            $error["target"] = "password";
+            $error["message"] = $messages["error_password"];
+
+            $_SESSION["error"] = $error;
+            header("Location: signup.php");
+            exit();
+        }
+
+        if ($password != $confirmPassword) {
+            $error["target"] = "confirmpassword";
+            $error["message"] = $messages["error_mismatch"];
+
+            $_SESSION["error"] = $error;
+            header("Location: signup.php");
+            exit();
+        }
+
+        // condition validation
+        if ($condition != "on") {
+            $error["target"] = "condition";
+            $error["message"] = $messages["error_condition"];
+
+            $_SESSION["error"] = $error;
+            header("Location: signup.php");
+            exit();
+        }
+
+        // try to Signup
+        unset($_SESSION["remem_data"]);
+        
+        try {
+            $stmt = $conn->prepare("INSERT INTO users (username, password) VALUES (:username, :password)");
+            $stmt->bindParam(":username", $username);
+            $stmt->bindParam(":password", $password);
+            $stmt->execute();
+    
+            $_SESSION["success"] = "success";
+            header("Location: signup.php");
+            exit();
+        } catch (PDOException $e) {
+            $_SESSION['error_ontry'] = "เอะ!! เกิดข้อผิดพลาด: " . $e->getMessage();
+            header("Location: signup.php");
+            exit();
+        }
+    }
+
+?>
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -58,6 +166,32 @@
     </style>
 </head>
 <body class="bg-gray-100 text-gray-900 min-h-screen flex items-center justify-center p-4">
+    
+    <!-- Error Popup: จะแสดงผลเฉพาะเมื่อมี $_SESSION['error'] -->
+    <?php if (isset($_SESSION['error_ontry'])) : ?>
+    <div id="errorPopup" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div class="bg-white border-4 border-black p-8 max-w-sm w-full relative paper-shadow popup-animate">
+            <!-- Decorative Tape -->
+            <div class="absolute -top-4 left-1/2 -translate-x-1/2 w-24 h-8 bg-red-500/80 rotate-2 border border-black z-10"></div>
+            
+            <div class="text-center">
+                <div class="inline-flex items-center justify-center w-16 h-16 bg-red-100 text-red-600 rounded-full mb-4 border-2 border-black">
+                    <i data-lucide="shield-alert" class="w-8 h-8"></i>
+                </div>
+                <h3 class="text-2xl font-black mb-2 font-mono uppercase">พบข้อผิดพลาด!</h3>
+                <p class="text-gray-600 mb-6"><?php echo $_SESSION['error_ontry']; ?></p>
+                <button onclick="closeErrorPopup()" 
+                        class="w-full bg-black text-white font-mono font-bold py-3 border-2 border-black hover:bg-red-600 transition-colors">
+                    รับทราบ (จะตั้งสติใหม่)
+                </button>
+            </div>
+        </div>
+    </div>
+    <?php 
+        // เคลียร์ error ทันทีหลังจากแสดงผล เพื่อไม่ให้มันค้างตอนรีเฟรชหน้า
+        unset($_SESSION['error']); 
+    ?>
+    <?php endif; ?>
 
     <!-- Background Layer -->
     <div class="fixed inset-0 bg-dots pointer-events-none"></div>
@@ -84,9 +218,9 @@
                 
                 <!-- Decorative Tape -->
                 <div class="absolute -top-3 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-gray-200/50 backdrop-blur-sm rotate-1 border border-gray-300"></div>
-
-                <form id="registerForm" class="space-y-4" novalidate>
-                    
+                
+                <form action="signup.php" method="POST" id="registerForm" class="space-y-4" >
+                        
                     <label class="block text-3xl font-bold mb-1 font-mono group-hover:text-blue-600 transition-colors">
                         Sign up <span class="text-gray-400 font-light text-xl">(สร้างตัวตนจ้าา)</span>
                     </label>
@@ -96,8 +230,10 @@
                             USERNAME <span class="text-gray-400 font-light text-xs">(ชื่อที่แม่ภูมิใจ)</span>
                         </label>
                         <input type="text" id="username" name="username"
+                            value = "<?php if (isset($_SESSION["remem_data"])) { echo $_SESSION["remem_data"]["username"]; } ?>"
                             class="w-full bg-gray-50 border-2 border-black focus:border-blue-500 p-3 font-mono outline-none transition-all placeholder-gray-300"
-                            placeholder="somchai_inwza007">
+                            placeholder="somchai_inwza007"
+                            require>
                         <p id="error-username" class="text-red-500 text-xs mt-1 font-bold hidden"></p>
                     </div>
 
@@ -107,8 +243,10 @@
                             PASSWORD <span class="text-gray-400 font-light text-xs">(อย่าตั้ง 1234 นะขอร้อง)</span>
                         </label>
                         <input type="password" id="password" name="password"
+                            value = "<?php if (isset($_SESSION["remem_data"])) { echo $_SESSION["remem_data"]["password"]; } ?>"
                             class="w-full bg-gray-50 border-2 border-black focus:border-blue-500 p-3 font-mono outline-none transition-all placeholder-gray-300"
-                            placeholder="••••••••">
+                            placeholder="••••••••"
+                            require>
                         <p id="error-password" class="text-red-500 text-xs mt-1 font-bold hidden"></p>
                     </div>
 
@@ -118,23 +256,27 @@
                             CONFIRM PASSWORD <span class="text-gray-400 font-light text-xs">(ทวนความจำ)</span>
                         </label>
                         <input type="password" id="confirmPassword" name="confirmPassword"
+                            value = "<?php if (isset($_SESSION["remem_data"])) { echo $_SESSION["remem_data"]["confirmPassword"]; } ?>"
                             class="w-full bg-gray-50 border-2 border-black focus:border-blue-500 p-3 font-mono outline-none transition-all placeholder-gray-300"
-                            placeholder="••••••••">
+                            placeholder="••••••••"
+                            requires>
                         <p id="error-confirmPassword" class="text-red-500 text-xs mt-1 font-bold hidden"></p>
                     </div>
 
                     <!-- Checkbox -->
                     <div class="flex items-start space-x-3 pt-2">
                         <div class="flex items-center h-5">
-                            <input id="terms" type="checkbox" class="w-5 h-5 border-2 border-black rounded-none focus:ring-0 text-black cursor-pointer appearance-none bg-white checked:bg-black checked:border-black relative checked:after:content-['✓'] checked:after:absolute checked:after:text-white checked:after:text-sm checked:after:left-1 checked:after:-top-0.5" required>
+                            <input id="terms" name="condition" type="checkbox" class="w-5 h-5 border-2 border-black rounded-none focus:ring-0 text-black cursor-pointer appearance-none bg-white checked:bg-black checked:border-black relative checked:after:content-['✓'] checked:after:absolute checked:after:text-white checked:after:text-sm checked:after:left-1 checked:after:-top-0.5" required>
                         </div>
                         <label htmlFor="terms" class="text-xs text-gray-500 cursor-pointer select-none">
                             ข้าพเจ้ายอมรับเงื่อนไขว่า Pornsiri Printing คือที่สุดในย่านนี้ และจะไม่ฟ้องร้องถ้างานสวยเกินไป
                         </label>
                     </div>
 
+                    <?php unset($_SESSION["remem_data"]); ?>
+
                     <!-- Submit Button -->
-                    <button type="submit" id="submitBtn"
+                    <button type="submit" id="submitBtn" name="signup"
                         class="w-full bg-black text-white font-mono font-bold py-4 px-6 text-lg uppercase tracking-widest border-2 border-black transition-all transform paper-shadow hover:bg-white hover:text-black hover:-translate-y-1 active:translate-y-0 active:shadow-none disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed disabled:shadow-none disabled:translate-y-0">
                         ยอมรับชะตากรรม
                     </button>
@@ -161,7 +303,7 @@
                </div>
                <h2 class="text-3xl font-bold mb-2 font-mono">ลงทะเบียนเสร็จแล้ว!</h2>
                <p class="text-gray-600 mb-8">ข้อมูลของคุณถูกบันทึก (และอาจจะถูกนินทา) เรียบร้อยแล้ว</p>
-               <button onclick="window.location.reload()"
+               <button onclick="window.location.href = '../signin/signin.php'"
                    class="w-full bg-black text-white font-mono font-bold py-3 hover:bg-gray-800 transition-all paper-shadow border-2 border-transparent active:border-black">
                    เริ่มจ่าย เอ้ย!! ใช้งานกันเลย!!
                </button>
@@ -171,22 +313,15 @@
     </div>
 
     <script>
-        // --- Configuration ---
-        const messages = {
-            idle: "พร้อมจะเป็นหนี้... เอ้ย ลูกค้าเราหรือยัง?",
-            typing_user: "ชื่อเท่ๆ นะ เอาแบบไม่อายใคร",
-            typing_pass: "ตั้งยากๆ หน่อย เดี๋ยวโดนแฮกแล้วร้องไห้",
-            typing_confirm: "จำรหัสเมื่อกี้ได้ป่าว? หรือลืมแล้ว?",
-            error_mismatch: "พิมพ์ไม่เหมือนกัน สตินิดนึงครับพี่",
-            success: "ยินดีด้วย คุณได้ไปต่อ (ในหน้า Login)"
-        };
+        
 
         // --- Elements ---
         const form = document.getElementById('registerForm');
         const submitBtn = document.getElementById('submitBtn');
-        const funMessageEl = document.getElementById('funMessage');
         const registerView = document.getElementById('registerView');
         const successView = document.getElementById('successView');
+
+        // Element sets
         const inputs = {
             username: document.getElementById('username'),
             password: document.getElementById('password'),
@@ -198,97 +333,33 @@
             confirmPassword: document.getElementById('error-confirmPassword')
         };
 
-        // --- Event Listeners for Typing Fun Messages ---
-        inputs.username.addEventListener('focus', () => funMessageEl.innerText = messages.typing_user);
-        inputs.password.addEventListener('focus', () => funMessageEl.innerText = messages.typing_pass);
-        inputs.confirmPassword.addEventListener('focus', () => funMessageEl.innerText = messages.typing_confirm);
+        function closeErrorPopup() {
+            const popup = document.getElementById('errorPopup');
+            if(popup) popup.classList.add('hidden');
+        }
         
-        // Clear errors on input
-        Object.keys(inputs).forEach(key => {
-            inputs[key].addEventListener('input', () => {
-                inputs[key].classList.remove('input-error');
-                errors[key].classList.add('hidden');
-                errors[key].innerText = '';
-            });
-        });
+        // --- Detect Session ---
 
-        // --- Form Submission Logic ---
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            // Reset Errors
-            let isValid = true;
-            Object.values(errors).forEach(el => el.classList.add('hidden'));
-            Object.values(inputs).forEach(el => el.classList.remove('input-error'));
+        <?php if (isset($_SESSION["error"])) { ?>
+            showError('<?php echo $_SESSION["error"]["target"]; ?>', '<?php echo $_SESSION["error"]["message"]; ?>');
+            <?php unset($_SESSION["error"]); ?>
+        <?php }else if (isset($_SESSION["success"])) { ?>
+            showSuccess();
+            <?php unset($_SESSION["success"]); ?>
+        <?php } ?>
 
-            // Validation Rules
-            // 1. Username
-            if (!inputs.username.value.trim()) {
-                showError('username', "ไม่ใส่ชื่อแล้วจะรู้ไหมใคร");
-                isValid = false;
-            } else if (inputs.username.value.length < 3) {
-                showError('username', "ชื่อสั้นไป ใจเย็นๆ พิมพ์เพิ่มหน่อย");
-                isValid = false;
-            }
-
-            // 2. Password
-            if (!inputs.password.value) {
-                showError('password', "รหัสผ่านหายไปไหน?");
-                isValid = false;
-            } else if (inputs.password.value.length < 6) {
-                showError('password', "รหัสสั้นไป เดี๋ยวโดนแฮกง่ายๆ");
-                isValid = false;
-            }
-
-            // 3. Confirm Password
-            if (inputs.password.value !== inputs.confirmPassword.value) {
-                showError('confirmPassword', "รหัสไม่ตรงกัน ความจำสั้นนะเรา");
-                funMessageEl.innerText = messages.error_mismatch;
-                isValid = false;
-            }
-
-            if (!document.getElementById('terms').checked) {
-                alert("กดยอมรับเงื่อนไขก่อนสิครับพี่!");
-                isValid = false;
-            }
-
-            // If Valid
-            if (isValid) {
-                setLoading(true);
-                funMessageEl.innerText = "กำลังส่งข้อมูลไปจักรวาลนฤมิต...";
-
-                // Simulate Network Request
-                setTimeout(() => {
-                    setLoading(false);
-                    showSuccess();
-                }, 2000);
-            } else {
-                // Shake effect logic could go here
-            }
-        });
-
-        // --- Helper Functions ---
+        // --- Errors---
         function showError(field, message) {
             inputs[field].classList.add('input-error');
             errors[field].innerText = `⚠️ ${message}`;
             errors[field].classList.remove('hidden');
         }
 
-        function setLoading(isLoading) {
-            if (isLoading) {
-                submitBtn.disabled = true;
-                submitBtn.innerText = "กำลังโหลด (ใจร่มๆ)...";
-            } else {
-                submitBtn.disabled = false;
-                submitBtn.innerText = "ยอมรับชะตากรรม";
-            }
-        }
-
+        // --- Success ---
         function showSuccess() {
-            funMessageEl.innerText = messages.success;
             registerView.classList.add('hidden');
             successView.classList.remove('hidden');
-            // Re-initialize icons for the new view
+            
             lucide.createIcons();
         }
 

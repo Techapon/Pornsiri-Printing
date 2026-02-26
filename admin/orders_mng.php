@@ -14,8 +14,7 @@
     $sordOrders = [];
 
     // Const data
-
-    $priority = ['pending', 'waiting', 'completed', 'cancelled'];
+    $priority = ['pending', 'waiting', 'completed', 'rejected'];
 
     $action_dict = [
         "accept" => [
@@ -73,7 +72,7 @@
         "completed" => [
             "mean" => "completed",
             "text" => "ปริ้นสำเร็จ",
-            "color" => "bg-green-300",
+            "color" => "bg-green-400",
             "action" => [
                 "delete" => $action_dict["delete"]
             ]
@@ -81,9 +80,10 @@
         "rejected" => [
             "mean" => "rejected",
             "text" => "ปฎิเสธ",
-            "color" => "bg-red-300",
+            "color" => "bg-red-500",
             "action" => [
-                "delete" => $action_dict["delete"]
+                "delete" => $action_dict["delete"],
+                "cancelled" => $action_dict["cancelled"]
             ]
         ]
     ];
@@ -107,22 +107,101 @@
     foreach ($priority as $status) {
         foreach ($orders as $key => $order) {
             if ($order["status"] == $status) {
-                $count_status[$status]++;
-                
+    
                 $stmt = $conn->prepare("SELECT username FROM users WHERE id = :order_user_id");
                 $stmt->bindParam(":order_user_id", $order["user_id"]);
                 $stmt->execute();
-                $user = $stmt->fetchAll(PDO::FETCH_ASSOC);
-              
+                $user = $stmt->fetchAll();
+                
                 $order["username"] = $user[0]["username"];
-  
+
+                $count_status[$status]++;
+                                
                 $sordOrders[] = $order;
 
-                unset($orders[$key]);
-                
+                unset($orders[$key]);   
             }
         }
     }
+
+    $replace_start_index = null;
+    $replace_end_index = null;
+
+    $waiting_list = [];
+
+    foreach ($sordOrders as $key => $order) {
+        if ($order["status"] == $status_dict["waiting"]["mean"]) {
+
+            if ($replace_start_index === null) {    
+                $replace_start_index = $key;
+            }
+            $replace_end_index = $key;
+
+            $waiting_list[] = $order;
+            usort($waiting_list, function($a, $b) {
+                return $a["queue"] <=> $b["queue"];
+            });
+        }
+    }
+
+    // replace old waiting orders 
+    if ($waiting_list != []) {
+        array_splice(
+            $sordOrders,
+            $replace_start_index,
+            $replace_end_index,
+            $waiting_list
+        );
+    }
+    
+    // for action btn
+    if (isset($_POST["accept"])) {
+        $id = $_POST["accept"];
+
+        $stmt = $conn->prepare("UPDATE orders SET status = 'waiting', queue = (SELECT MAX(queue) FROM orders) + 1 WHERE order_id = :id");
+        $stmt->bindParam(":id", $id);
+        $stmt->execute();
+
+        header("Location: orders_mng.php");
+        exit();
+    }
+
+    if (isset($_POST["reject"])) {
+        $id = $_POST["reject"];
+        $stmt = $conn->prepare("UPDATE orders SET status = 'rejected' WHERE order_id = :id");
+        $stmt->bindParam(":id", $id);
+        $stmt->execute();
+        header("Location: orders_mng.php");
+        exit();
+    }
+
+    if (isset($_POST["completed"])) {
+        $id = $_POST["completed"];
+        $stmt = $conn->prepare("UPDATE orders SET status = 'completed', queue = 0 WHERE order_id = :id");
+        $stmt->bindParam(":id", $id);
+        $stmt->execute();
+        header("Location: orders_mng.php");
+        exit();
+    }
+
+    if (isset($_POST["cancelled"])) {
+        $id = $_POST["cancelled"];
+        $stmt = $conn->prepare("UPDATE orders SET status = 'pending', queue = 0 WHERE order_id = :id");
+        $stmt->bindParam(":id", $id);
+        $stmt->execute();
+        header("Location: orders_mng.php");
+        exit();
+    }
+
+    if (isset($_POST["delete"])) {
+        $id = $_POST["delete"];
+        $stmt = $conn->prepare("DELETE FROM orders WHERE order_id = :id");
+        $stmt->bindParam(":id", $id);
+        $stmt->execute();
+        header("Location: orders_mng.php");
+        exit();
+    }
+
 ?>
 
 <!DOCTYPE html>
@@ -205,10 +284,12 @@
     <div id="rejectModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 hidden backdrop-blur-sm">
         <div class="bg-white border-4 border-black p-6 max-w-sm w-full admin-shadow">
             <h3 class="text-xl font-black font-mono mb-4 uppercase">ระบุเหตุผลที่ปฏิเสธ</h3>
-            <textarea id="rejectReason" class="w-full p-2 font-mono text-sm mb-4 focus:bg-red-50" rows="3" placeholder="เช่น ไฟล์ไม่ชัดเจน, ลิงก์เข้าไม่ได้..."></textarea>
+            <textarea id="rejectReason" class="w-full p-2 font-mono text-sm mb-4 focus:bg-red-50" maxlength="200" rows="3" placeholder="เช่น ไฟล์ไม่ชัดเจน, ลิงก์เข้าไม่ได้..."></textarea>
             <div class="flex space-x-2">
-                <button onclick="executeReject()" class="flex-1 bg-red-500 text-white border-2 border-black py-2 font-bold hover:bg-black transition-all">ยืนยันการปฏิเสธ</button>
-                <button onclick="closeModal('rejectModal')" class="flex-1 bg-white border-2 border-black py-2 font-bold hover:bg-gray-100 transition-all">ยกเลิก</button>
+                <form action="orders_mng.php" method="POST">
+                    <button value = "0" id="confirm_relect_btn" name="reject" class="flex-1 bg-red-500 text-white border-2 border-black py-2 px-3 font-bold hover:bg-black transition-all">ยืนยันการปฏิเสธ</button>
+                </form>
+                <button onclick="close_confirm();" class="flex-1 bg-white border-2 border-black py-2 font-bold hover:bg-gray-100 transition-all">ยกเลิก</button>
             </div>
         </div>
     </div>
@@ -219,8 +300,10 @@
             <h3 class="text-xl font-black font-mono mb-4 uppercase text-red-600">ลบข้อมูลถาวร?</h3>
             <p class="text-sm text-gray-600 mb-6 font-mono">คุณกำลังจะลบออเดอร์นี้ออกจากระบบอย่างถาวร ยืนยันหรือไม่?</p>
             <div class="flex space-x-2">
-                <button onclick="executeDelete()" class="flex-1 bg-black text-white border-2 border-black py-2 font-bold hover:bg-red-600 transition-all">ยืนยันการลบ</button>
-                <button onclick="closeModal('deleteModal')" class="flex-1 bg-white border-2 border-black py-2 font-bold hover:bg-gray-100 transition-all">ยกเลิก</button>
+                <form action="orders_mng.php" method="POST">
+                    <button value = "0" id="confirm_delete_btn" name="delete" class="flex-1 bg-black text-white border-2 border-black py-2 px-2 font-bold hover:bg-red-600 transition-all">ยืนยันการลบ</button>
+                </form>
+                <button onclick="close_confirm();" class="flex-1 bg-white border-2 border-black py-2 px-2 font-bold hover:bg-gray-100 transition-all">ยกเลิก</button>
             </div>
         </div>
     </div>
@@ -231,6 +314,12 @@
             <h1 class="text-2xl font-black font-mono tracking-tighter italic">PORNSIRI<br><span class="bg-black text-white px-2">ADMIN</span></h1>
         </div>
         <nav class="space-y-2">
+            <a href="orders_mng.php" class="flex items-center p-3 border-2 border-transparent hover:border-black font-mono font-bold transition-all bg-black text-white">
+                <i data-lucide="layout-dashboard" class="w-4 h-4 mr-2"></i> ORDERS
+            </a>
+            <a href="admin_manual.php" class="flex items-center p-3 border-2 border-transparent hover:border-black font-mono font-bold transition-all text-gray-600 hover:text-black">
+                <i data-lucide="book-open" class="w-4 h-4 mr-2"></i> MANUAL
+            </a>
             <a href="../logout.php" class="flex items-center p-3 border-2 border-transparent hover:border-black font-mono font-bold transition-all mt-20 text-red-500">
                 <i data-lucide="log-out" class="w-4 h-4 mr-2"></i> LOGOUT
             </a>
@@ -273,8 +362,8 @@
         <!-- Filter Controls -->
         <div class="flex flex-wrap gap-2 mb-6" id="filter-container">
             <button id="btn-all" onclick="filterOrders('all', this)" class="px-4 py-2 border-2 border-black font-mono font-bold text-xs filter-active hover:bg-black hover:text-white transition-all uppercase">ออร์เดอร์ทั้งหมด</button>
-            <button id="btn-general" onclick="filterOrders('general', this)" class="px-4 py-2 border-2 border-black font-mono font-bold text-xs bg-white hover:bg-black hover:text-white transition-all uppercase">ออร์เดอร์ทั่วไป</button>
-            <button id="btn-pending" onclick="filterOrders('pending', this)" class="px-4 py-2 border-2 border-black font-mono font-bold text-xs bg-white hover:bg-black hover:text-white transition-all uppercase">รอคิวปริ้น</button>
+            <button id="btn-general" onclick="filterOrders('pending', this)" class="px-4 py-2 border-2 border-black font-mono font-bold text-xs bg-white hover:bg-black hover:text-white transition-all uppercase">ออร์เดอร์ทั่วไป</button>
+            <button id="btn-pending" onclick="filterOrders('waiting', this)" class="px-4 py-2 border-2 border-black font-mono font-bold text-xs bg-white hover:bg-black hover:text-white transition-all uppercase">รอคิวปริ้น</button>
             <button id="btn-completed" onclick="filterOrders('completed', this)" class="px-4 py-2 border-2 border-black font-mono font-bold text-xs bg-white hover:bg-black hover:text-white transition-all uppercase">ปริ้นสำเร็จ</button>
             <button id="btn-rejected" onclick="filterOrders('rejected', this)" class="px-4 py-2 border-2 border-black font-mono font-bold text-xs bg-white hover:bg-black hover:text-white transition-all uppercase">ออร์เดอร์ที่ปฏิเสธ</button>
         </div>
@@ -294,6 +383,9 @@
                     </thead>
                     <tbody class="font-mono" id="orders-body">
                         <?php
+                            // quese counter
+                            $queue = 1;
+                            // -------------
                             foreach ($sordOrders as $order) {
                                 $order_id = $order["order_id"];
                                 $order_user_name = $order["username"];
@@ -305,15 +397,28 @@
                                 $order_size = $order["size"];
                                 $order_qty = $order["quantity"];
                                 $order_message = $order["message"];
+                                $order_respone = $order["respone"];
 
                                 $status_color = $status_dict[$order_status]["color"];
                                 $status_text = $status_dict[$order_status]["text"];
-                                
+
                                 ?>
-                              
+                                
                                 <!-- Main-->
-                                <tr class="order-row border-b-2 border-black" data-status="general" id="row-2001" onclick="toggleRow(this)">
-                                    <td class="p-4 border-r-2 border-black font-bold">#<?=$order_id?></td>
+                                <tr class="order-row border-b-2 border-black" data-status="<?=$order_status?>" id="row-2001" onclick="toggleRow(this)">
+                                    <td class="p-4 border-r-2 border-black font-bold">
+                                        <div class="flex">
+                                            <?php if ($order_status == $status_dict["waiting"]["mean"])  { ?>
+                                                <div class="flex justify-center bg-yellow-400 px-2 mr-2 border-2 border-black">
+                                                    <span class="text-s font-bold text-black "><?= $queue?></span>
+                                                    <?php $queue++; ?>
+                                                </div>
+                                            <?php } ?>
+                                            <?php
+                                                echo "#".$order_id;
+                                            ?>
+                                        </div>
+                                    </td>
                                     <td class="p-4 border-r-2 border-black">
                                         <p class="text-xs font-bold"><?=$order_user_name?></p>
                                         <p class="text-[10px] text-gray-400"><?=$order_date?></p>
@@ -322,29 +427,40 @@
                                         <span class="status-badge bg-general <?=$status_color?>"><?=$status_text?></span>
                                     </td>
                                     <td class="p-4 border-r-2 border-black">
-                                        <div class="flex justify-center space-x-2" id="actions-2001">
+                                        <div class="flex justify-center space-x-2">
                                             <!-- <button onclick="event.stopPropagation(); updateStatus('2001', 'pending')" class="btn-action bg-yellow-300">รับงาน</button>
                                             <button onclick="event.stopPropagation(); openRejectModal('2001')" class="btn-action bg-red-400">ปฏิเสธ</button> -->
                                             <?php foreach ($status_dict as $action_btn) {
+                 
                                                 if ($order_status == $action_btn["mean"]) {
+                                   
                                                     foreach ($action_btn["action"] as $action) {
-                                                        ?>
+                                                        $mean = $action["mean"];
+                                                        
+                                                        $confirm = ($mean == "delete") 
+                                                        || ($mean == "reject") 
+                                                        || ($mean == "cancelled");
+             
+                                                        // Pass string '$mean' (with quotes) to JS function
+                                                        $onclick = "open_confirm($order_id, '$mean');";
+                                                        
+                                                       ?>   
+                                                            <?php if (!$confirm) echo "<form action='orders_mng.php' method='POST'>"; ?>
 
-                                                        <?php if ($action["mean"] != "delete") { ?>
-                                                            <button  class="btn-action <?=$action["color"]?> <?=$action["text_color"]?>">
-                                                                <?=$action["text"]?>
-                                                            </button>
-                                                        <?php } else { ?>
-                                                            <button  class="flex items-center btn-action <?=$action["color"]?> <?=$action["text_color"]?>">
-                                                                <i data-lucide="<?=$action["icon"]?>" class="w-3 h-3 mr-1"></i>
-                                                                <?=$action["text"]?>
-                                                            </button>
-                                                        <?php } ?>
-                                                    
-                                                    <?php
+                                                                <button name ="<?=$action['mean'];?>"  onclick ="event.stopPropagation(); <?php if ($confirm) echo $onclick; ?>"   value="<?=$order["order_id"]?>"   class=" flex btn-action <?=$action["color"]?> <?=$action["text_color"]?>">
+                                                                    <?php if ($action["mean"] == "delete") { ?>
+                                                                        <i data-lucide='<?=$action['icon']?>' class='w-3 h-3 mr-1'></i>
+                                                                    <?php } ?>
+            
+                                                                    <?=$action["text"]?>
+                                                                </button>
+
+                                                            <?php if (!$confirm) echo "</form>"; ?>
+                                                        <?php
                                                     }
                                                 }
                                             } ?>
+                                    
                                         </div>
                                     </td>
                                     <td class="p-4 text-center">
@@ -353,11 +469,18 @@
                                 </tr>
 
                                 <!-- Detail -->
-                                <tr class="details-row" data-status="general">
+                                <tr class="details-row" data-status="<?=$order_status?>">
                                     <td colspan="5" class="p-0 border-r-2 border-black">
                                         <div class="details-container">
                                             <div class="p-6 bg-white grid md:grid-cols-2 gap-8 border-t-2 border-black">
                                                 <div class="space-y-4">
+                                                    <?php if ($order_status == "rejected") { ?>
+                                                        <div class="flex items-center space-x-2 font-mono mb-4">
+                                                            <i data-lucide="circle-alert" class="text-sm text-red-500"></i>
+                                                            <p class="font-bold">เหตุผลในการปฏิเสธงาน : <span class = "text-sm text-red-500"><?php if ($order_respone != "") { echo $order_respone; } else { echo "คุณไม่ได้บอกเหตุผลในการปฏิเสธงานไว้..."; } ?></span></p>
+                                                        </div>
+                                                    <?php } ?>
+
                                                     <div>
                                                         <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">ลิ้งก์ไฟล์งาน</p>
                                                         <a href="#" class="inline-flex items-center text-blue-600 underline text-sm font-bold break-all">
@@ -391,14 +514,11 @@
             </div>
         </div>
     </main>
-
+    
     <script>
-        let currentTargetId = null;
-
         // --- Toggle Row Details ---
         function toggleRow(rowElement) {
             const isActive = rowElement.classList.contains('active');
-            
             
             // ถ้าแถวที่กดไม่ได้ active อยู่ ให้เปิดมันซะ
             if (!isActive) {
@@ -431,78 +551,79 @@
 
         // --- Filter Logic ---
         function filterOrders(status, btn) {
-            // const buttons = document.querySelectorAll('#filter-container button');
-            // buttons.forEach(b => b.classList.remove('filter-active'));
-            // btn.classList.add('filter-active');
+            const buttons = document.querySelectorAll('#filter-container button');
+            buttons.forEach(b => b.classList.remove('filter-active'));
+            btn.classList.add('filter-active');
 
-            // const rows = document.querySelectorAll('.order-row');
-            // const detailsRows = document.querySelectorAll('.details-row');
+            const rows = document.querySelectorAll('.order-row');
+            const detailsRows = document.querySelectorAll('.details-row');
 
-            // rows.forEach((row, index) => {
-            //     const details = detailsRows[index];
-            //     if (status === 'all') {
-            //         row.classList.remove('hidden');
-            //         details.classList.remove('hidden');
-            //     } else {
-            //         if (row.dataset.status === status) {
-            //             row.classList.remove('hidden');
-            //             details.classList.remove('hidden');
-            //         } else {
-            //             row.classList.add('hidden');
-            //             details.classList.add('hidden');
-            //             row.classList.remove('active');
-            //         }
-            //     }
-            // });
-            console.log(status);
-            console.log(btn);
+            rows.forEach((row, index) => {
+                const details = detailsRows[index];
+                if (status === 'all') {
+                    row.classList.remove('hidden');
+                    details.classList.remove('hidden');
+                } else {
+                    if (row.dataset.status === status) {
+                        row.classList.remove('hidden');
+                        details.classList.remove('hidden');
+                    } else {
+                        row.classList.add('hidden');
+                        details.classList.add('hidden');
+                        row.classList.remove('active');
+                    }
+                }
+            });
         }
 
-        // --- Status Update ---
-        // function updateStatus(id, newStatus) {
-        //     const row = document.getElementById('row-' + id);
-        //     const badge = row.querySelector('.status-badge');
-        //     const actions = document.getElementById('actions-' + id);
+
+        // open confrim popup
+        function open_confirm(id,action) {
+
+            if (action == "reject") { 
+                var confirm_parent = document.getElementById("rejectModal");
+                var confirm_btn = document.getElementById("confirm_relect_btn");
+            }else {
+                var confirm_parent = document.getElementById("deleteModal");
+                var confirm_btn = document.getElementById("confirm_delete_btn");
             
-        //     row.classList.add('row-updated');
-        //     row.dataset.status = newStatus;
+                // Set Titles based on action
+                let title;
+                let des;
+                let btnText;
+
+                if (action == "delete") {
+                    title = "ลบข้อมูลถาวร?";
+                    des = "คุณกำลังจะลบออเดอร์นี้ออกจากระบบอย่างถาวร ยืนยันหรือไม่?";
+                    btnText = "ยืนยันการลบ";
+                } else if (action == "cancelled") {
+                    title = "ยกเลิกสถานะปัจจุบันของออเดอร์นี้?";
+                    des = "คุณกำลังจะยกเลิกสถานะปัจจุบันของออเดอร์นี้ ยืนยันหรือไม่?";
+                    btnText = "ยืนยันการยกเลิก";
+                }
+
+                const confirm_title = confirm_parent.querySelector("h3");
+                const confirm_des = confirm_parent.querySelector("p");
+    
+                confirm_title.innerText = title;
+                confirm_des.innerText = des;
+                confirm_btn.innerText = btnText;
+    
+            }
             
-        //     const detailRow = row.nextElementSibling;
-        //     detailRow.dataset.status = newStatus;
+            confirm_btn.value = id;
+            confirm_btn.name = action; 
 
-        //     setTimeout(() => {
-        //         if (newStatus === 'pending') {
-        //             badge.innerText = 'รอคิวปริ้น';
-        //             badge.className = 'status-badge bg-pending';
-        //             actions.innerHTML = `
-        //                 <button onclick="event.stopPropagation(); updateStatus('${id}', 'completed')" class="btn-action bg-green-400">สำเร็จ</button>
-        //                 <button onclick="event.stopPropagation(); openDeleteModal('${id}')" class="btn-action bg-white text-red-600">ลบทิ้ง</button>
-        //             `;
-        //         } else if (newStatus === 'completed') {
-        //             badge.innerText = 'ปริ้นสำเร็จ';
-        //             badge.className = 'status-badge bg-completed';
-        //             actions.innerHTML = `
-        //                 <button onclick="event.stopPropagation(); openDeleteModal('${id}')" class="btn-action bg-white text-red-600 uppercase">ลบทิ้ง</button>
-        //             `;
-        //         }
-        //         row.classList.remove('row-updated');
-        //     }, 400);
-        // }
+            confirm_parent.classList.remove('hidden');
 
-        // --- Modal Control ---
-        function openRejectModal(id) {
-            currentTargetId = id;
-            document.getElementById('rejectModal').classList.remove('hidden');
         }
 
-        function openDeleteModal(id) {
-            currentTargetId = id;
-            document.getElementById('deleteModal').classList.remove('hidden');
-        }
-
-        function closeModal(modalId) {
-            document.getElementById(modalId).classList.add('hidden');
-            currentTargetId = null;
+        // close confrim popup
+        function close_confirm() {
+            const confirm_delete = document.getElementById("deleteModal");
+            const confirm_reject = document.getElementById("rejectModal");
+            confirm_delete.classList.add('hidden');
+            confirm_reject.classList.add('hidden');
         }
 
         // function executeReject() {

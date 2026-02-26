@@ -7,7 +7,6 @@
         $username = trim($_POST['username']);
         $password = $_POST['password'];
 
-        echo "yeah";
         try {
             // ค้นหาผู้ใช้ในฐานข้อมูล
             $stmt = $conn->prepare("SELECT id, username, password ,role FROM users WHERE username = :username");
@@ -16,9 +15,11 @@
 
             $user = $stmt->fetch();
 
+            echo $user["username"];
+            echo $user["passworod"];
+
             // // ตรวจสอบว่าพบผู้ใช้และรหัสผ่านถูกต้องหรือไม่
             if ( $user['password'] == $password) {
-
 
                 switch ($user['role']) {
                     // General user
@@ -130,7 +131,6 @@
         </div>
     </div>
     <?php 
-        // เคลียร์ error ทันทีหลังจากแสดงผล เพื่อไม่ให้มันค้างตอนรีเฟรชหน้า
         unset($_SESSION['error']); 
     ?>
     <?php endif; ?>
