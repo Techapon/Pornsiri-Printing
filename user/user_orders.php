@@ -25,7 +25,7 @@
         // exit();
 
 
-        $stmt = $conn->prepare("INSERT INTO orders (user_id, status,link, message, paper_type, size,quantity,queue) VALUES (:user_id, 'pending', :link, :message, :paper_type, :size, :quantity,0)");
+        $stmt = $conn->prepare("INSERT INTO orders (user_id, status,link, message, paper_type, size,quantity,queue,respone) VALUES (:user_id, 'pending', :link, :message, :paper_type, :size, :quantity,0,'')");
         $stmt->bindParam(':user_id', $user_id);
         $stmt->bindParam(':link', $link);
         $stmt->bindParam(':message', $message);

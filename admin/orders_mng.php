@@ -158,7 +158,7 @@
     if (isset($_POST["accept"])) {
         $id = $_POST["accept"];
 
-        $stmt = $conn->prepare("UPDATE orders SET status = 'waiting', queue = (SELECT MAX(queue) FROM orders) + 1 WHERE order_id = :id");
+        $stmt = $conn->prepare("UPDATE orders SET status = 'waiting', queue = (SELECT * FROM (SELECT MAX(queue) FROM orders) AS t) + 1 WHERE order_id = :id");
         $stmt->bindParam(":id", $id);
         $stmt->execute();
 
